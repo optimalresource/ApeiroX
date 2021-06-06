@@ -87,7 +87,8 @@ interface APEIROX20 {
   */
   function name() external view returns (string memory);
 
-  
+
+  function allowance(address _owner, address spender) external view returns (uint256);
 
   /**
    * @dev get token balance on an account
@@ -99,6 +100,10 @@ interface APEIROX20 {
    * @dev sendable tokens to another account
    */
   function transfer(address recipient, uint256 amount) external returns (bool);
+
+  function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+  function approve(address spender, uint256 amount) external returns (bool);
 
 
   /**
@@ -205,6 +210,23 @@ contract Ownable is Context {
     _;
   }
 
+  /**
+   * @dev Transfers ownership of the contract to a new account (`newOwner`).
+   * Can only be called by the current owner.
+   */
+  function transferOwnership(address newOwner) public onlyOwner {
+    _transferOwnership(newOwner);
+  }
+
+  /**
+   * @dev Transfers ownership of the contract to a new account (`newOwner`).
+   */
+  function _transferOwnership(address newOwner) internal {
+    require(newOwner != address(0), "Ownable: new owner is the zero address");
+    emit OwnershipTransferred(_owner, newOwner);
+    _owner = newOwner;
+  }
+
 }
 
 contract APEIROX is Context, APEIROX20 , Ownable {
@@ -213,27 +235,25 @@ contract APEIROX is Context, APEIROX20 , Ownable {
   using SafeMath for uint256;
 
   mapping (address => uint256) public _balances;
-
-  mapping (address => mapping (address => uint256)) public _allowances;
   
   mapping(address => mapping(address => uint)) allowed;
   
 
   address public _contractOwner;
-  address public _tokenRecipient;
+  address private _tokenRecipient;
   uint256 public _totalSupply;
   uint256 public _circulatingSupply;
   uint256 public _releasedSupply;
-  uint256 public _amount ;
-  uint256[] public _incrementor ;
-  uint256 public  _yearCount ;
-  uint256 public  _secondsCount;
-  uint256 public  _launchDate ;
-  uint256 public _currentDate ;
-  uint256 public _allowableValue ;
+  uint256 private _amount ;
+  uint256[] private _incrementor ;
+  uint256 private  _yearCount ;
+  uint256 private  _secondsCount;
+  uint256 private  _launchDate ;
+  uint256 private _currentDate ;
+  uint256 private _allowableValue ;
   uint256 public _reserveSupply ;
-  uint256 public _reserveUnit ;
-  uint256 public _unlockTimestammp;
+  uint256 private _reserveUnit ;
+  uint256 private _unlockTimestammp;
   uint8 public _decimals;
   string public _symbol;
   string public _name;
@@ -401,8 +421,8 @@ modifier spendableToken() {
    
    
   function _transfer(address sender, address recipient, uint256 amount) spendableToken internal {
-    // require(sender != address(0), "APEIROX20: transfer from the zero address");
-    // require(recipient != address(0), "APEIROX20: transfer to the zero address");
+    require(sender != address(0), "APEIROX20: transfer from the zero address");
+    require(recipient != address(0), "APEIROX20: transfer to the zero address");
 
     _balances[sender] = _balances[sender].sub(amount, "APEIROX20: transfer amount exceeds balance");
     _balances[recipient] = _balances[recipient].add(amount);
@@ -410,6 +430,112 @@ modifier spendableToken() {
 	_circulatingSupply += amount ;
 	
     emit Transfer(sender, recipient, amount);
+  }
+
+  /**
+   * @dev See {BEP20-transferFrom}.
+   *
+   * Emits an {Approval} event indicating the updated allowance. This is not
+   * required by the EIP. See the note at the beginning of {BEP20};
+   *
+   * Requirements:
+   * - `sender` and `recipient` cannot be the zero address.
+   * - `sender` must have a balance of at least `amount`.
+   * - the caller must have allowance for `sender`'s tokens of at least
+   * `amount`.
+   */
+
+  function transferFrom(address sender, address recipient, uint256 amount) external returns (bool) {
+    _transfer(sender, recipient, amount);
+    _approve(sender, _msgSender(), allowed[sender][_msgSender()].sub(amount, "BEP20: transfer amount exceeds allowance"));
+    return true;
+  }
+
+  /**
+   * @dev Atomically increases the allowance granted to `spender` by the caller.
+   *
+   * This is an alternative to {approve} that can be used as a mitigation for
+   * problems described in {BEP20-approve}.
+   *
+   * Emits an {Approval} event indicating the updated allowance.
+   *
+   * Requirements:
+   *
+   * - `spender` cannot be the zero address.
+   */
+  function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+    _approve(_msgSender(), spender, allowed[_msgSender()][spender].add(addedValue));
+    return true;
+  }
+
+  /**
+   * @dev Atomically decreases the allowance granted to `spender` by the caller.
+   *
+   * This is an alternative to {approve} that can be used as a mitigation for
+   * problems described in {BEP20-approve}.
+   *
+   * Emits an {Approval} event indicating the updated allowance.
+   *
+   * Requirements:
+   *
+   * - `spender` cannot be the zero address.
+   * - `spender` must have allowance for the caller of at least
+   * `subtractedValue`.
+   */
+  function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+    _approve(_msgSender(), spender, allowed[_msgSender()][spender].sub(subtractedValue, "BEP20: decreased allowance below zero"));
+    return true;
+  }
+
+  /**
+   * @dev Sets `amount` as the allowance of `spender` over the `owner`s tokens.
+   *
+   * This is internal function is equivalent to `approve`, and can be used to
+   * e.g. set automatic allowances for certain subsystems, etc.
+   *
+   * Emits an {Approval} event.
+   *
+   * Requirements:
+   *
+   * - `owner` cannot be the zero address.
+   * - `spender` cannot be the zero address.
+   */
+   function _approve(address sender, address spender, uint256 amount) internal {
+    require(sender != address(0), "BEP20: approve from the zero address");
+    require(spender != address(0), "BEP20: approve to the zero address");
+
+    allowed[sender][spender] = amount;
+    emit Approval(sender, spender, amount);
+  }
+
+   /**
+   * @dev Destroys `amount` tokens from `account`, reducing the
+   * total supply.
+   *
+   * Emits a {Transfer} event with `to` set to the zero address.
+   *
+   * Requirements
+   *
+   * - `account` cannot be the zero address.
+   * - `account` must have at least `amount` tokens.
+   */
+  function _burn(address account, uint256 amount) spendableToken internal {
+    require(account != address(0), "BEP20: burn from the zero address");
+
+    _balances[account] = _balances[account].sub(amount, "BEP20: burn amount exceeds balance");
+    _totalSupply = _totalSupply.sub(amount);
+    emit Transfer(account, address(0), amount);
+  }
+
+  /**
+   * @dev Destroys `amount` tokens from `account`.`amount` is then deducted
+   * from the caller's allowance.
+   *
+   * See {_burn} and {_approve}.
+   */
+  function _burnFrom(address account, uint256 amount) internal {
+    _burn(account, amount);
+    _approve(account, _msgSender(), allowed[account][_msgSender()].sub(amount, "BEP20: burn amount exceeds allowance"));
   } 
 
 }
